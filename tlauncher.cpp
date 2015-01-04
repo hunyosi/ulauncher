@@ -11,6 +11,181 @@
 #include <map>
 
 
+
+
+static void
+rtrim(
+  std::string& str,
+  const std::string& trimChrs = " \t\n\r\v\f")
+{
+ std::string::size_type p = str.find_last_not_of(trimChrs);
+ if (p == std::string::npos) {
+  str.erase(0);
+  return;
+ }
+
+ ++ p;
+ str.erase(p);
+}
+
+
+static void
+ltrim(
+  std::string& str,
+  const std::string& trimChrs = " \t\n\r\v\f")
+{
+ std::string::size_type p = str.find_first_not_of(trimChrs);
+ str.erase(0, p);
+}
+
+
+static void
+trim(
+  std::string& str,
+  const std::string& trimChrs = " \t\n\r\v\f")
+{
+ rtrim(str, trimChrs);
+ ltrim(str, trimChrs);
+}
+
+
+static void
+chomp(
+  std::string& str)
+{
+ std::string::size_type p = str.find_last_not_of("\r\n");
+ if (p == std::string::npos) {
+  return;
+ }
+
+ ++ p;
+ str.erase(p);
+}
+
+static void
+toUpperCase(
+  std::string& str)
+{
+ for (size_t i = 0, z = str.size(); i < z; ++ i) {
+  char c = str[i];
+  if (L'a' <= c && c <= L'z') {
+   str[i] = L'A' + (c - L'a');
+  }
+ }
+}
+
+
+static std::string
+cmdLineEncoding(
+ char const *cmdLine)
+{
+ if (cmdLine[0] == '\0') {
+  return "\"\"";
+ }
+
+ std::string v(cmdLine);
+ if (v.find_first_of(" \t\r\n\v\f") != std::string::npos) {
+  std::string v2;
+  v2.append(1, L'\"');
+
+  char prevvc = 0;
+  for (char vc : v) {
+   if (vc == L'\"') {
+    if (prevvc == L'\\') {
+     v2.append(1, L'\\');
+    }
+    v2.append(1, L'\\');
+   }
+
+   v2.append(1, vc);
+   prevvc = vc;
+  }
+
+  v2.append(1, L'\"');
+
+  return v2;
+ } else {
+  return v;
+ }
+}
+
+
+
+
+static bool
+existsFile(char const * path)
+{
+ DWORD attrs = ::GetFileAttributes(path);
+ if (attrs == (DWORD)-1) {
+  return false;
+ }
+
+ return ((attrs & FILE_ATTRIBUTE_DEVICE) == 0);
+}
+
+
+
+
+typedef std::map<std::string, std::vector< std::string > > MapVec;
+typedef std::shared_ptr< MapVec > SpMapVec;
+
+static SpMapVec
+readIniFile(
+  char const * path)
+{
+ SpMapVec p;
+ SpMapVec mp( new MapVec() );
+ std::string prevKey = "";
+
+ std::vector< char > buf(4096);
+ std::ifstream ifs(path);
+ while (ifs.good() && ! ifs.getline(&buf[0], buf.size()).eof()) {
+  std::string line(&buf[0]);
+  trim(line);
+  if (line[0] == '#') {
+   continue;
+  }
+
+  std::string::size_type p = line.find('=');
+  if (p == std::string::npos) {
+   std::vector< std::string > & vec = (*mp)[prevKey];
+   vec.push_back(line);
+   continue;
+
+  } else {
+   std::string key(line, 0, p);
+   std::string val(line, p + 1, line.size() - (p + 1));
+   trim(key);
+   trim(val);
+   std::vector< std::string > & vec = (*mp)[key];
+   if (0 < val.size()) {
+    vec.push_back(val);
+   }
+
+   prevKey = key;
+  }
+ }
+
+ if (ifs.bad()) {
+  return p;
+ }
+
+ return mp;
+}
+
+
+
+
+/*
+class VoicebankModule
+{
+
+};
+*/
+
+
+
+
 typedef std::wstring WStr;
 typedef std::shared_ptr< WStr > SpWStr;
 typedef std::vector< SpWStr > VecSpWStr;
@@ -49,31 +224,7 @@ expandEnvVar(
    c = str[i];
    nc = str[i + 1];
    if (c == L'%' && L'0' <= nc && nc <= L'9') {
-    std::string v(*(*args)[nc - L'0']);
-    if (v.find_first_of(" \t\r\n\v\f") != std::string::npos) {
-     std::string v2;
-     v2.append(1, L'\"');
-
-     char prevvc = 0;
-     for (char vc : v) {
-      if (vc == L'\"') {
-       if (prevvc == L'\\') {
-        v2.append(1, L'\\');
-       }
-       v2.append(1, L'\\');
-      }
-
-      v2.append(1, vc);
-      prevvc = vc;
-     }
-
-     v2.append(1, L'\"');
-
-     argsExpanded.append(v2);
-    } else {
-     argsExpanded.append(v);
-    }
-
+    argsExpanded.append(cmdLineEncoding((*args)[nc - L'0']->c_str()));
     ++ i;
    } else {
     argsExpanded.append(1, c);
@@ -171,68 +322,6 @@ parseCommandLine(
  }
 
  return argVec;
-}
-
-
-static void
-rtrim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- std::string::size_type p = str.find_last_not_of(trimChrs);
- if (p == std::string::npos) {
-  str.erase(0);
-  return;
- }
-
- ++ p;
- str.erase(p);
-}
-
-
-static void
-ltrim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- std::string::size_type p = str.find_first_not_of(trimChrs);
- str.erase(0, p);
-}
-
-
-static void
-trim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- rtrim(str, trimChrs);
- ltrim(str, trimChrs);
-}
-
-
-static void
-chomp(
-  std::string& str)
-{
- std::string::size_type p = str.find_last_not_of("\r\n");
- if (p == std::string::npos) {
-  return;
- }
-
- ++ p;
- str.erase(p);
-}
-
-static void
-toUpperCase(
-  std::string& str)
-{
- for (size_t i = 0, z = str.size(); i < z; ++ i) {
-  char c = str[i];
-  if (L'a' <= c && c <= L'z') {
-   str[i] = L'A' + (c - L'a');
-  }
- }
 }
 
 
@@ -363,6 +452,291 @@ private:
 
 
 
+typedef std::map<std::string, std::string > MapStr;
+typedef std::shared_ptr< MapStr > SpMapStr;
+
+class BatExecInfo
+{
+protected:
+ SpVecSpStr m_batArgs;
+ SpMapStr m_envVars;
+ SpStr m_originalLine;
+ SpStr m_expandedLine;
+ SpVecSpStr m_parsed;
+
+public:
+ BatExecInfo(
+   SpVecSpStr batArgs,
+   SpMapStr envVars,
+   SpStr originalLine,
+   SpStr expandedLine);
+
+ SpVecSpStr getBatArgs() const { return m_batArgs; }
+ SpMapStr getEnvVars() const { return m_envVars; }
+ SpStr getOriginalLine() const { return m_originalLine; }
+ SpStr getExpandedLine() const { return m_expandedLine; }
+ SpVecSpStr getParsed() const { return  m_parsed; }
+
+ bool execute(int & exitCode);
+
+public:
+ BatExecInfo(BatExecInfo const &);
+ BatExecInfo & operator=(BatExecInfo const &);
+};
+
+
+BatExecInfo::BatExecInfo(
+  SpVecSpStr batArgs,
+  SpMapStr envVars,
+  SpStr originalLine,
+  SpStr expandedLine)
+  :
+  m_batArgs(batArgs),
+  m_envVars(envVars),
+  m_originalLine(originalLine),
+  m_expandedLine(expandedLine)
+{
+ m_parsed = parseCommandLine(m_expandedLine->c_str());
+}
+
+
+bool
+BatExecInfo::execute(
+  int & exitCode)
+{
+ DWORD status;
+
+ for(auto elm : *m_envVars) {
+  if (0 < elm.second.size()) {
+   ::SetEnvironmentVariable(elm.first.c_str(), elm.second.c_str());
+  } else {
+   ::SetEnvironmentVariable(elm.first.c_str(), NULL);
+  }
+ }
+
+ std::string line;
+ for (SpStr elm : *m_parsed) {
+  if (0 < line.size()) {
+   line.append(1, ' ');
+  }
+  line.append(cmdLineEncoding(elm->c_str()));
+ }
+
+ std::vector< char > cmdLine(line.size() + 1);
+ size_t i;
+ for (i = 0; i < line.size(); ++ i) {
+  cmdLine[i] = line[i];
+ }
+ cmdLine[i] = '\0';
+
+ std::cout << "> " << &cmdLine[0] << std::endl;
+
+
+ STARTUPINFO si;
+ GetStartupInfo(&si);
+
+ PROCESS_INFORMATION pi;
+
+ if (! ::CreateProcess(
+   NULL, &cmdLine[0],
+   NULL, NULL, FALSE,
+   NORMAL_PRIORITY_CLASS,
+   NULL, NULL,
+   &si, &pi)) {
+  exitCode = -1;
+  return false;
+ }
+
+ ::WaitForSingleObject(pi.hProcess, INFINITE);
+ ::GetExitCodeProcess(pi.hProcess, &status);
+ ::CloseHandle(pi.hThread);
+ ::CloseHandle(pi.hProcess);
+
+ exitCode = (int)status;
+ return true;
+}
+
+
+
+
+typedef std::shared_ptr< BatExecInfo > SpBatExecInfo;
+typedef std::vector< SpBatExecInfo > VecSpBatExecInfo;
+typedef std::shared_ptr< VecSpBatExecInfo > SpVecSpBatExecInfo;
+
+
+class BatToolSet
+{
+private:
+ std::string m_msg;
+ SpVecSpBatExecInfo m_execInfos;
+ SpBatExecInfo m_resampler;
+ SpBatExecInfo m_wavtool;
+
+public:
+ BatToolSet();
+
+ bool isEmpty() { return m_execInfos->size() == 0; }
+
+ void addMessage(std::string const & msg);
+
+ bool hasResampler() const { return (bool) m_resampler; }
+ SpBatExecInfo getResampler() const { return m_resampler; }
+
+ bool hasWavtool() const { return (bool) m_wavtool; }
+ SpBatExecInfo getWavtool() const { m_wavtool; }
+
+ bool setExecInfo(SpBatExecInfo execInfo);
+
+ bool execute();
+};
+
+
+BatToolSet::BatToolSet()
+  :
+  m_execInfos(new VecSpBatExecInfo())
+{
+}
+
+
+void
+BatToolSet::addMessage(
+  std::string const & msg)
+{
+ m_msg.append(msg);
+}
+
+
+bool
+BatToolSet::setExecInfo(
+  SpBatExecInfo execInfo)
+{
+ m_execInfos->push_back(execInfo);
+
+ std::string cmd(*(execInfo->getOriginalLine()));
+ ltrim(cmd, "@ \t\v\f\n\r");
+ std::string::size_type pos = cmd.find_first_of(" \t\v\f\n\r");
+ if (pos != std::string::npos) {
+  cmd.erase(pos);
+ }
+
+ toUpperCase(cmd);
+ if (cmd.find("%RESAMP%") != std::string::npos) {
+  m_resampler = execInfo;
+ } else if (cmd.find("%TOOL%") != std::string::npos) {
+  m_wavtool = execInfo;
+  return false;
+ }
+
+ return true;
+}
+
+
+bool
+BatToolSet::execute()
+{
+ std::cout << m_msg << std::endl;
+
+ int exitCode;
+
+ for (SpBatExecInfo execInfo : *m_execInfos) {
+  if (! execInfo->execute(exitCode)) {
+   return false;
+  }
+ }
+
+ return true;
+}
+
+
+
+
+typedef std::shared_ptr< BatToolSet > SpBatToolSet;
+typedef std::vector< SpBatToolSet > VecSpBatToolSet;
+typedef std::shared_ptr< VecSpBatToolSet > SpVecSpBatToolSet;
+
+class BatExecList
+{
+private:
+ SpMapStr m_envVars;
+ SpVecSpBatToolSet m_toolSets;
+
+public:
+ BatExecList();
+
+ void setEnvVar(std::string const & name, std::string const & value);
+ std::string const & getEnvVar(std::string const & name) const { return (*m_envVars)[name]; } 
+ void addMessage(std::string const & msg);
+
+ void addExecInfo(
+  SpVecSpStr batArgs,
+  SpStr originalLine,
+  SpStr expandedLine);
+
+ bool execute();
+};
+
+
+BatExecList::BatExecList()
+  :
+  m_envVars(new MapStr()),
+  m_toolSets(new VecSpBatToolSet())
+{
+ SpBatToolSet toolSetSp(new BatToolSet());
+ m_toolSets->push_back(toolSetSp);
+}
+
+
+void
+BatExecList::setEnvVar(std::string const & varName, std::string const & varVal)
+{
+ SpMapStr envVars(new MapStr(*m_envVars));
+ (*envVars)[varName.c_str()] = varVal.c_str();
+ m_envVars = envVars;
+}
+
+
+void
+BatExecList::addMessage(
+  std::string const & msg)
+{
+ m_toolSets->back()->addMessage(msg);
+}
+
+
+void
+BatExecList::addExecInfo(
+  SpVecSpStr batArgs,
+  SpStr originalLine,
+  SpStr expandedLine)
+{
+ SpBatExecInfo execInfo(new BatExecInfo(
+   batArgs,
+   m_envVars,
+   originalLine,
+   expandedLine));
+
+ if (! m_toolSets->back()->setExecInfo(execInfo)) {
+  SpBatToolSet toolSetSp(new BatToolSet());
+  m_toolSets->push_back(toolSetSp);
+ }
+}
+
+
+bool
+BatExecList::execute()
+{
+ for (SpBatToolSet toolSet : *m_toolSets) {
+  if (! toolSet->execute()) {
+   return false;
+  }
+ }
+
+ return true;
+}
+
+
+
+
 class BatEnv
 {
 private:
@@ -373,35 +747,38 @@ private:
  int m_exitCode;
 
 public:
- int callBat(SpVecSpStr args);
+ int callBat(SpVecSpStr args, BatExecList & execList);
  int exitCode() const { return m_exitCode; }
 
 private:
- int evalLine(Str const & line);
- int evalLineBody(Str lineBody);
+ int evalLine(Str const & line, BatExecList & execList);
+ int evalLineBody(
+   Str lineBody,
+   Str const & origLine,
+   BatExecList & execList);
 
- int doRem(Str & line);
- int doSet(Str & line);
- int doIf(Str & line);
- int doGoto(Str & line);
- int doEcho(Str & line);
- int doDel(Str & line);
- int doMkdir(Str & line);
- int doCopy(Str & line);
- int doCall(Str & line);
- int doExec(Str & line);
+ int doRem(Str & line, Str const & origLine, BatExecList & execList);
+ int doSet(Str & line, Str const & origLine, BatExecList & execList);
+ int doIf(Str & line, Str const & origLine, BatExecList & execList);
+ int doGoto(Str & line, Str const & origLine, BatExecList & execList);
+ int doCall(Str & line, Str const & origLine, BatExecList & execList);
+ int doEcho(Str & line, Str const & origLine, BatExecList & execList);
+ int doDel(Str & line, Str const & origLine, BatExecList & execList);
+ int doMkdir(Str & line, Str const & origLine, BatExecList & execList);
+ int doCopy(Str & line, Str const & origLine, BatExecList & execList);
+ int doExec(Str & line, Str const & origLine, BatExecList & execList);
 };
 
 
 int
-BatEnv::doRem(Str & line)
+BatEnv::doRem(Str & line, Str const & origLine, BatExecList & execList)
 {
  return 0;
 }
 
 
 int
-BatEnv::doSet(Str & line)
+BatEnv::doSet(Str & line, Str const & origLine, BatExecList & execList)
 {
  line.erase(0, 3);
  ltrim(line);
@@ -414,6 +791,8 @@ BatEnv::doSet(Str & line)
   varVal.append(line, p + 1, line.size() - (p + 1));
  }
 
+ execList.setEnvVar(varName, varVal);
+
  if (0 < varVal.size()) {
   ::SetEnvironmentVariable(varName.c_str(), varVal.c_str());
  } else {
@@ -425,7 +804,7 @@ BatEnv::doSet(Str & line)
 
 
 int
-BatEnv::doIf(Str & line)
+BatEnv::doIf(Str & line, Str const & origLine, BatExecList & execList)
 {
  bool isNot = false;
  bool done = false;
@@ -471,7 +850,7 @@ BatEnv::doIf(Str & line)
   }
 
   if (result) {
-   evalLineBody(line);
+   evalLineBody(line, origLine, execList);
   }
  }
 
@@ -480,7 +859,7 @@ BatEnv::doIf(Str & line)
 
 
 int
-BatEnv::doGoto(Str & line)
+BatEnv::doGoto(Str & line, Str const & origLine, BatExecList & execList)
 {
  line.erase(0, 4);
  trim(line);
@@ -494,16 +873,30 @@ BatEnv::doGoto(Str & line)
 
 
 int
-BatEnv::doEcho(Str & line)
+BatEnv::doEcho(Str & line, Str const & origLine, BatExecList & execList)
 {
  line.erase(0, 5);
- std::cout << line << std::endl;
+ execList.addMessage(line);
+// std::cout << line << std::endl;
  return 0;
 }
 
 
 int
-BatEnv::doDel(Str & line)
+BatEnv::doCall(Str & line, Str const & origLine, BatExecList & execList)
+{
+ line.erase(0, 4);
+ ltrim(line);
+ SpVecSpStr args = parseCommandLine(line.c_str());
+ BatEnv env;
+ env.callBat(args, execList);
+ m_exitCode = env.exitCode();
+ return 0;
+}
+
+
+int
+BatEnv::doDel(Str & line, Str const & origLine, BatExecList & execList)
 {
  SpVecSpStr args = parseCommandLine(line.c_str());
 
@@ -526,7 +919,7 @@ BatEnv::doDel(Str & line)
 
 
 int
-BatEnv::doMkdir(Str & line)
+BatEnv::doMkdir(Str & line, Str const & origLine, BatExecList & execList)
 {
  SpVecSpStr args = parseCommandLine(line.c_str());
  ::CreateDirectory((*args)[1]->c_str(), NULL);
@@ -535,105 +928,71 @@ BatEnv::doMkdir(Str & line)
 
 
 int
-BatEnv::doCopy(Str & line)
+BatEnv::doCopy(Str & line, Str const & origLine, BatExecList & execList)
 {
+/*
  SpVecSpStr args = parseCommandLine(line.c_str());
  SpVecSpStr srcs(new VecSpStr());
  srcs->push_back((*args)[2]);
  srcs->push_back((*args)[5]);
 
  return concatBinFiles(srcs, (*args)[7]->c_str());
-}
-
-
-int
-BatEnv::doCall(Str & line)
-{
- line.erase(0, 4);
- ltrim(line);
- SpVecSpStr args = parseCommandLine(line.c_str());
- BatEnv env;
- env.callBat(args);
- m_exitCode = env.exitCode();
+*/
  return 0;
 }
 
 
 int
 BatEnv::doExec(
-  Str & line)
+  Str & line,
+  Str const & origLine, 
+  BatExecList & execList)
 {
- DWORD exitCode;
-
- ltrim(line);
-
- std::vector< char > cmdLine(line.size() + 1);
- size_t i;
- for (i = 0; i < line.size(); ++ i) {
-  cmdLine[i] = line[i];
- }
- cmdLine[i] = '\0';
-
- STARTUPINFO si;
- GetStartupInfo(&si);
-
- PROCESS_INFORMATION pi;
-
- if (! ::CreateProcess(
-   NULL, &cmdLine[0],
-   NULL, NULL, FALSE,
-   NORMAL_PRIORITY_CLASS,
-   NULL, NULL,
-   &si, &pi)) {
-  m_exitCode = -1;
-  return -1;
- }
-
- ::WaitForSingleObject(pi.hProcess, INFINITE);
- ::GetExitCodeProcess(pi.hProcess, &exitCode);
- ::CloseHandle(pi.hThread);
- ::CloseHandle(pi.hProcess);
-
- m_exitCode = (int)exitCode;
+ SpStr cmdLine(new Str(line));
+ SpStr origCmdLine(new Str(origLine));
+ execList.addExecInfo(m_args, origCmdLine, cmdLine);
  return 0;
 }
 
 
 int
 BatEnv::evalLineBody(
-  Str lineBody)
+  Str lineBody,
+  Str const & origLine,
+  BatExecList & execList)
 {
  std::string::size_type p = lineBody.find_first_of(" \t\v\f");
  std::string command(lineBody, 0, p != std::string::npos ? p : lineBody.size());
  toUpperCase(command);
 
  if (command == "REM") {
-  return doRem(lineBody);
+  return doRem(lineBody, origLine, execList);
  } else if (command == "SET") {
-  return doSet(lineBody);
+  return doSet(lineBody, origLine, execList);
  } else if (command == "IF") {
-  return doIf(lineBody);
+  return doIf(lineBody, origLine, execList);
  } else if (command == "GOTO") {
-  return doGoto(lineBody);
+  return doGoto(lineBody, origLine, execList);
  } else if (command == "ECHO") {
-  return doEcho(lineBody);
+  return doEcho(lineBody, origLine, execList);
  } else if (command == "DEL") {
-  return doDel(lineBody);
+  return doDel(lineBody, origLine, execList);
  } else if (command == "MKDIR") {
-  return doMkdir(lineBody);
+  return doMkdir(lineBody, origLine, execList);
  } else if (command == "COPY") {
-  return doCopy(lineBody);
+  return doCopy(lineBody, origLine, execList);
  } else if (command == "CALL") {
-  return doCall(lineBody);
+  return doCall(lineBody, origLine, execList);
  } else {
-  return doExec(lineBody);
+  return doExec(lineBody, origLine, execList);
  }
 }
 
 
 int
 BatEnv::evalLine(
-  Str const & line)
+  Str const & line,
+  BatExecList & execList)
 {
  SpStr expanded = expandEnvVar(line.c_str(), m_args);
  ltrim(*expanded);
@@ -653,13 +1012,14 @@ BatEnv::evalLine(
   std::cout << "> " << *expanded << std::endl;
  //}
 
- return evalLineBody(*expanded);
+ return evalLineBody(*expanded, line, execList);
 }
 
 
 int
 BatEnv::callBat(
-  SpVecSpStr args)
+  SpVecSpStr args,
+  BatExecList & execList)
 {
  int retVal = 0;
  try {
@@ -697,7 +1057,7 @@ BatEnv::callBat(
   }
 
   for (; m_pc < lines->size(); ++ m_pc) {
-   evalLine(*(*lines)[m_pc]);
+   evalLine(*(*lines)[m_pc], execList);
   }
 
  } catch (std::exception e) {
@@ -715,6 +1075,46 @@ BatEnv::callBat(
 }
 
 
+void
+removeWavPartialFiles(BatExecList & execList)
+{
+ Str wav =  execList.getEnvVar("output");
+ SpStr whd(new Str(wav + ".whd"));
+ SpStr dat(new Str(wav + ".dat"));
+
+ if (existsFile(whd->c_str())) {
+  ::DeleteFile(whd->c_str());
+ }
+
+ if (existsFile(dat->c_str())) {
+  ::DeleteFile(dat->c_str());
+ }
+}
+
+
+bool
+buildWavFile(BatExecList & execList)
+{
+ bool success = false;
+ Str wav =  execList.getEnvVar("output");
+ SpStr whd(new Str(wav + ".whd"));
+ SpStr dat(new Str(wav + ".dat"));
+
+ if (existsFile(whd->c_str()) && existsFile(dat->c_str())) {
+  SpVecSpStr srcs(new VecSpStr());
+  srcs->push_back(whd);
+  srcs->push_back(dat);
+
+  success = (concatBinFiles(srcs, wav.c_str()) == 0);
+ }
+
+ removeWavPartialFiles(execList);
+
+ return success;
+}
+
+
+
 int
 mainImpl(SpVecSpStr args)
 {
@@ -723,10 +1123,18 @@ mainImpl(SpVecSpStr args)
   newArgs->push_back((*args)[i]);
  }
 
+ BatExecList execList;
  BatEnv env;
- env.callBat(newArgs);
+ env.callBat(newArgs, execList);
 
- return env.exitCode();
+ removeWavPartialFiles(execList);
+
+ if (execList.execute()) {
+  buildWavFile(execList);
+  return 0;
+ } else {
+  return -1;
+ }
 }
 
 
