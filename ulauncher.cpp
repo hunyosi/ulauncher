@@ -133,7 +133,7 @@ getModFileName(
   HINSTANCE modHandle)
 {
  DWORD readSize;
- std::vector< TCHAR > buf(4096);
+ std::vector< TCHAR > buf(MAX_PATH);
 
  for (;;) {
   readSize = ::GetModuleFileName(modHandle, &buf[0], buf.size());
@@ -142,7 +142,7 @@ getModFileName(
    break;
   }
 
-  if (readSize < buf.size() - 1) {
+  if (readSize < buf.size() - 2) {
    break;
   }
 
@@ -160,15 +160,15 @@ toFullPathName(
 {
  TCHAR *p;
  std::vector< TCHAR > buf(MAX_PATH);
- DWORD s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
+ DWORD s;
+ s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
+ if (buf.size() - 1 < s) {
+  buf.resize(s, 0);
+  s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
+ }
+
  if (s < 1) {
   buf[0] = 0;
- }
- if (buf.size() - 1 < s) {
-  ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
-  if (s < 1) {
-   buf[0] = 0;
-  }
  }
 
  std::string str(&buf[0]);

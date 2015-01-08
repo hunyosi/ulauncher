@@ -1,4 +1,6 @@
 #include <windows.h>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <stdexcept>
 #include <memory>
@@ -7,7 +9,6 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <cstdlib>
 #include <map>
 
 
@@ -110,6 +111,117 @@ cmdLineEncoding(
 }
 
 
+static std::string
+getDirName(
+  std::string const & path)
+{
+ std::string::size_type p = path.find_last_of("\\/:");
+ if (p == std::string::npos) {
+  p = 0;
+ } else {
+  ++ p;
+ }
+
+ std::string dirName(path, 0, p);
+ return dirName;
+}
+
+
+static std::string
+getFileName(
+  std::string const & path)
+{
+ std::string::size_type p = path.find_last_of("\\/:");
+ if (p == std::string::npos) {
+  p = 0;
+ } else {
+  ++ p;
+ }
+
+ std::string fileName(path, p, path.size() - p);
+ return fileName;
+}
+
+
+static std::string
+getBaseName(
+  std::string const & path)
+{
+ std::string fileName(getFileName(path));
+
+ std::string::size_type p = fileName.find_last_of(".");
+ if (p != std::string::npos) {
+  fileName.erase(p);
+ }
+
+ return fileName;
+}
+
+
+static std::string
+getExtName(
+  std::string const & path)
+{
+ std::string fileName(getFileName(path));
+
+ std::string::size_type p = fileName.find_last_of(".");
+ if (p == std::string::npos) {
+  return "";
+ }
+
+ fileName.erase(0, p);
+ return fileName;
+}
+
+
+static std::string
+toFullPathName(
+  std::string const & path)
+{
+ TCHAR *p;
+ std::vector< TCHAR > buf(MAX_PATH);
+ DWORD s;
+ s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
+ if (buf.size() - 1 < s) {
+  buf.resize(s, 0);
+  s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
+ }
+
+ if (s < 1) {
+  buf[0] = 0;
+ }
+
+ std::string str(&buf[0]);
+ return str;
+}
+
+
+static std::string
+getCurDir()
+{
+ std::vector< TCHAR > buf(MAX_PATH);
+ DWORD s;
+ s = ::GetCurrentDirectory(buf.size(), &buf[0]);
+ if (buf.size() - 1 < s) {
+  buf.resize(s, 0);
+  s = ::GetCurrentDirectory(buf.size(), &buf[0]);
+ }
+
+ if (s < 1) {
+  buf[0] = 0;
+ }
+
+ std::string str(&buf[0]);
+ return str;
+}
+
+
+static bool
+setCurDir(
+ std::string const & path)
+{
+ return ::SetCurrentDirectory(path.c_str()) != 0;
+}
 
 
 static bool
@@ -121,6 +233,224 @@ existsFile(char const * path)
  }
 
  return ((attrs & FILE_ATTRIBUTE_DEVICE) == 0);
+}
+
+
+static bool
+existsPath(char const * path)
+{
+ DWORD attrs = ::GetFileAttributes(path);
+ if (attrs == (DWORD)-1) {
+  return false;
+ }
+
+ return true;
+}
+
+
+static std::string
+getTempDir()
+{
+ std::vector< TCHAR > buf(MAX_PATH);
+ DWORD s;
+ s = ::GetTempPath(buf.size(), &buf[0]);
+ if (buf.size() - 1 < s) {
+  buf.resize(s, 0);
+  s = ::GetTempPath(buf.size(), &buf[0]);
+ }
+
+ if (s < 1) {
+  buf[0] = 0;
+ }
+
+ std::string str(&buf[0]);
+ return str;
+}
+
+
+static int
+randInt(
+  int minVal,
+  int maxVal)
+{
+ int trueMinVal = minVal;
+ int trueMaxVal = maxVal;
+ if (trueMinVal == trueMaxVal) {
+  return trueMinVal;
+ } if (trueMaxVal < trueMinVal) {
+  trueMinVal = maxVal;
+  trueMaxVal = minVal;
+ }
+ return (int)(((double)std::rand() * (trueMaxVal - trueMinVal)) / RAND_MAX + trueMinVal);
+}
+
+
+static char
+randChar(
+  std::string const chars)
+{
+ return chars[randInt(0, (int)chars.size() - 1)];
+}
+
+
+static std::string
+randStr(
+  int minLen = 4,
+  int maxLen = 8,
+  std::string const & chars = "1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+  std::string const & firstChars = "",
+  std::string const & lastChars = "")
+{
+ int len = randInt(minLen, maxLen);
+ if (len < 1) {
+  return "";
+ }
+
+ std::string buf(len, 0);
+ if (0 < firstChars.size()) {
+  buf[0] = randChar(firstChars);
+ } else {
+  buf[0] = randChar(chars);
+ }
+ if (len == 1) {
+  return buf;
+ }
+
+ int i = 1;
+ int len2 = len - 1;
+ for (; i < len2; ++ i) {
+  buf[i] = randChar(chars);
+ }
+
+ if (0 < lastChars.size()) {
+  buf[i] = randChar(lastChars);
+ } else {
+  buf[i] = randChar(chars);
+ }
+
+ return buf;
+}
+
+
+static std::string
+makeTempDir()
+{
+ std::string baseDir(getTempDir());
+ std::string tempDir;
+ std::string randDirName;
+
+ do {
+  randDirName = randStr();
+  tempDir = baseDir + randDirName;
+ } while (existsPath(tempDir.c_str()));
+
+ if (::CreateDirectory(tempDir.c_str(), NULL) == 0) {
+  return "";
+ }
+
+ return tempDir + "\\";
+}
+
+
+
+/* ****************************************************
+ *  EIN -- Extended INI 
+ * ****************************************************/
+namespace ein {
+
+ class EinEntry;
+ typedef std::shared_ptr< EinEntry > SpEinEntry;
+ class EinSection;
+ typedef std::shared_ptr< EinSection > SpEinSection;
+ class EinNode;
+ typedef std::shared_ptr< EinNode > SpEinNode;
+
+
+ class EinEntry : public std::vector< std::string >
+ {
+ private:
+  SpEinNode m_children;
+ public:
+  EinEntry();
+  SpEinNode children() { return m_children; }
+  void children(SpEinNode node) { m_children = node; }
+ };
+
+
+ class EinEntries : public std::vector< SpEinEntry >
+ {
+ public:
+  SpEinEntry
+  entry(std::string const & key)
+  {
+   for (auto entry : *this) {
+    for (auto elm : *entry) {
+     if (elm == key) {
+      return entry;
+     }
+    }
+   }
+
+   SpEinEntry dmy;
+   return dmy;
+  }
+ };
+
+
+ class EinSection : public EinEntries
+ {
+ private:
+  std::string m_name;
+
+ public:
+  std::string const & name() const { return m_name; }
+  void name(std::string const & nameVal) { m_name = nameVal; }
+ };
+
+
+ class EinNode : public EinEntries
+ {
+ private:
+  std::vector< SpEinSection > m_sections;
+
+ public:
+  std::vector< SpEinSection > & sections() { return m_sections; }
+
+  SpEinSection section(std::string const & key)
+  {
+   for (auto section : m_sections) {
+    if (section->name() == key) {
+     return section;
+    }
+   }
+
+   SpEinSection dmy;
+   return dmy;
+  }
+
+ };
+
+
+ inline
+ EinEntry::EinEntry()
+   :
+   m_children(new EinNode())
+ {
+ }
+
+
+ class EinParser
+ {
+ public:
+  SpEinNode
+  parse(
+    std::istream & istrm)
+  {
+   SpEinNode node(new EinNode());
+   return node;
+  }
+ };
+
 }
 
 
@@ -176,12 +506,256 @@ readIniFile(
 
 
 
-/*
 class VoicebankModule
 {
+public:
+ typedef void _stdcall (*LoadFuncType)(char * baseDir);
+ typedef void _stdcall (*UnloadFuncType)();
+ typedef void _stdcall (*SetupFuncType)(int hwndParent);
+ typedef int _stdcall (*ExistsFuncType)(char * noteName, int noteTone);
+ typedef void * _stdcall (*GetPcmDataFuncType)(char * noteName, int noteTone);
+ typedef void _stdcall (*FreePcmFuncType)(void * pPcmData);
+ typedef void * _stdcall (*GetFrqDataFuncType)(char * noteName, int noteTone);
+ typedef void _stdcall (*FreeFrqFuncType)(void *pFrqData);
 
+private:
+ std::string m_modulePath;
+ std::string m_dirPath;
+ std::string m_fileName;
+ HMODULE m_hModule;
+
+ LoadFuncType m_load;
+ UnloadFuncType m_unload;
+ SetupFuncType m_setup;
+ ExistsFuncType m_exists;
+ GetPcmDataFuncType m_getpcmdata;
+ FreePcmFuncType m_freepcm;
+ GetFrqDataFuncType m_getfrqdata;
+ FreeFrqFuncType m_freefrq;
+
+public:
+ VoicebankModule(std::string const & absPath);
+ ~VoicebankModule();
+
+ bool good() const;
+ bool bad() const { return ! good(); }
+ std::string const & path() const { return m_modulePath; }
+ std::string const & dirPath() const { return m_dirPath; }
+ std::string const & fileName() const { return m_fileName; }
+
+ bool hasLoadFunc() const { return (m_load != NULL); }
+ bool hasUnloadFunc() const {return (m_unload != NULL); }
+ bool hasSetupFunc() const {return (m_setup != NULL); }
+ bool hasExistsFunc() const {return (m_exists != NULL); }
+ bool hasGetPcmDataFunc() const {return (m_getpcmdata != NULL); }
+ bool hasFreePcmFunc() const {return (m_freepcm != NULL); }
+ bool hasGetFrqDataFunc() const {return (m_getfrqdata != NULL); }
+ bool hasFreeFrqFunc() const {return (m_freefrq != NULL); }
+
+ void load(char const * baseDir = NULL) const;
+ void unload() const;
+ void setup(int hwndParent) const;
+ int exists(char const * noteName, int noteTone) const;
+ void * getPcmData(char const * noteName, int noteTone) const;
+ void freePcm(void * pPcm) const;
+ void * getFrqData(char const * noteName, int noteTone) const;
+ void freeFrq(void *pFrq) const;
+
+private:
+ VoicebankModule(VoicebankModule const &);
+ VoicebankModule & operator=(VoicebankModule const &);
 };
-*/
+
+
+VoicebankModule::VoicebankModule(
+  std::string const & absPath)
+  :
+  m_modulePath(absPath),
+  m_load(NULL),
+  m_unload(NULL),
+  m_setup(NULL),
+  m_exists(NULL),
+  m_getpcmdata(NULL),
+  m_freepcm(NULL),
+  m_getfrqdata(NULL),
+  m_freefrq(NULL)
+{
+ std::string::size_type p = m_modulePath.find_last_of("\\//");
+ m_dirPath.append(m_modulePath, 0, p + 1);
+ m_fileName.append(m_modulePath, p + 1, m_modulePath.size() - (p + 1));
+
+ m_hModule = ::LoadLibrary(m_modulePath.c_str());
+ if (m_hModule) {
+  m_load = (LoadFuncType)::GetProcAddress(m_hModule, "load");
+  m_unload = (UnloadFuncType)::GetProcAddress(m_hModule, "unload");
+  m_setup = (SetupFuncType)::GetProcAddress(m_hModule, "setup");
+  m_exists = (ExistsFuncType)::GetProcAddress(m_hModule, "exists");
+  m_getpcmdata = (GetPcmDataFuncType)::GetProcAddress(m_hModule, "getpcmdata");
+  m_freepcm = (FreePcmFuncType)::GetProcAddress(m_hModule, "freepcm");
+  m_getfrqdata = (GetFrqDataFuncType)::GetProcAddress(m_hModule, "getfrqdata");
+  m_freefrq = (FreeFrqFuncType)::GetProcAddress(m_hModule, "freefrq");
+ }
+}
+
+
+VoicebankModule::~VoicebankModule()
+{
+ if (m_hModule) {
+  ::FreeLibrary(m_hModule);
+  m_hModule = NULL;
+ }
+}
+
+
+bool
+VoicebankModule::good() const
+{
+ if (! m_hModule) {
+  return true;
+ }
+
+ return
+   (m_load != NULL) ||
+   (m_unload != NULL) ||
+   (m_setup != NULL) ||
+   (m_exists != NULL) ||
+   (m_getpcmdata != NULL) ||
+   (m_freepcm != NULL) ||
+   (m_getfrqdata != NULL) ||
+   (m_freefrq != NULL);
+}
+
+
+void
+VoicebankModule::load(
+  char const * baseDir) const
+{
+ if (! hasLoadFunc()) {
+  return;
+ }
+
+ std::vector< char > baseDirBuf;
+ if (baseDir) {
+  baseDirBuf.resize(std::strlen(baseDir) + 1);
+  std::strcpy(&baseDirBuf[0], baseDir);
+ } else {
+  baseDirBuf.resize(m_dirPath.size() + 1);
+  std::strncpy(&baseDirBuf[0], m_dirPath.c_str(), m_dirPath.size());
+  baseDirBuf[m_dirPath.size()] = '\0';
+ }
+
+ m_load(&baseDirBuf[0]);
+}
+
+
+void
+VoicebankModule::unload() const
+{
+ if (! hasUnloadFunc()) {
+  return;
+ }
+
+ m_unload();
+}
+
+
+void
+VoicebankModule::setup(
+  int hwndParent) const
+{
+ if (! hasSetupFunc()) {
+  return;
+ }
+
+ m_setup(hwndParent);
+}
+
+
+int
+VoicebankModule::exists(
+  char const * noteName,
+  int noteTone) const
+{
+ if (! hasExistsFunc()) {
+  return 0;
+ }
+
+ char * bufp = NULL;
+ std::vector< char > buf;
+ if (noteName) {
+  buf.resize(std::strlen(noteName) + 1);
+  std::strcpy(&buf[0], noteName);
+  bufp = &buf[0];
+ }
+
+ return m_exists(bufp, noteTone);
+}
+
+
+void *
+VoicebankModule::getPcmData(
+  char const * noteName,
+  int noteTone) const
+{
+ if (! hasGetPcmDataFunc()) {
+  return NULL;
+ }
+
+ char * bufp = NULL;
+ std::vector< char > buf;
+ if (noteName) {
+  buf.resize(std::strlen(noteName) + 1);
+  std::strcpy(&buf[0], noteName);
+  bufp = &buf[0];
+ }
+
+ return m_getpcmdata(bufp, noteTone);
+}
+
+
+void
+VoicebankModule::freePcm(
+  void * pPcm) const
+{
+ if (! hasFreePcmFunc()) {
+  return;
+ }
+
+ m_freepcm(pPcm);
+}
+
+
+void *
+VoicebankModule::getFrqData(
+  char const * noteName,
+  int noteTone) const
+{
+ if (! hasGetFrqDataFunc()) {
+  return NULL;
+ }
+
+ char * bufp = NULL;
+ std::vector< char > buf;
+ if (noteName) {
+  buf.resize(std::strlen(noteName) + 1);
+  std::strcpy(&buf[0], noteName);
+  bufp = &buf[0];
+ }
+
+ return m_getfrqdata(bufp, noteTone);
+}
+
+
+void
+VoicebankModule::freeFrq(
+  void *pFrq) const
+{
+ if (! hasFreePcmFunc()) {
+  return;
+ }
+
+ m_freefrq(pFrq);
+}
 
 
 
@@ -725,7 +1299,25 @@ BatExecList::addExecInfo(
 bool
 BatExecList::execute()
 {
+ std::string tempDir = makeTempDir();
+ std::cout << "tempDir=" << tempDir << std::endl;
+
+ std::shared_ptr< VoicebankModule > vbmod;
+ if (m_envVars->find("loadmodule") != m_envVars->end() && (*m_envVars)["loadmodule"].size() != 0) {
+  std::shared_ptr< VoicebankModule > newVbMod(new VoicebankModule((*m_envVars)["loadmodule"]));
+  vbmod = newVbMod;
+ }
+
  for (SpBatToolSet toolSet : *m_toolSets) {
+
+  if (vbmod) {
+   std::string dirBackup(getCurDir());
+   setCurDir(vbmod->dirPath());
+   vbmod->load();
+   vbmod->unload();
+   setCurDir(dirBackup);
+  }
+
   if (! toolSet->execute()) {
    return false;
   }
