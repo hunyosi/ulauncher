@@ -721,7 +721,9 @@ VoicebankModule::freePcm(
   return;
  }
 
- m_freepcm(pPcm);
+ if (pPcm) {
+  m_freepcm(pPcm);
+ }
 }
 
 
@@ -754,7 +756,9 @@ VoicebankModule::freeFrq(
   return;
  }
 
- m_freefrq(pFrq);
+ if (pFrq) {
+  m_freefrq(pFrq);
+ }
 }
 
 
@@ -982,6 +986,57 @@ concatBinFiles(
 }
 
 
+static int
+writeBinFile(
+  const char * destPath,
+  void * data,
+  size_t dataSize)
+{
+ unsigned char * buf =(unsigned char *) data;
+ HANDLE fileHandle = ::CreateFile(destPath, GENERIC_WRITE,
+   0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+ if (fileHandle == INVALID_HANDLE_VALUE) {
+  return -1;
+ }
+
+ WinHandleHolder fh(fileHandle);
+ DWORD writeSize = (DWORD) dataSize;
+ DWORD wroteSize;
+ size_t pos;
+
+ pos = 0;
+ do {
+  if (! ::WriteFile(fh, &buf[pos], writeSize, &wroteSize, NULL)) {
+   return -1;
+  }
+
+  pos += wroteSize;
+  writeSize -= wroteSize;
+ } while (0 < writeSize);
+
+ fh.close();
+ return 0;
+}
+
+
+static size_t
+getWavFileSize(
+  void * wavData)
+{
+ unsigned char * buf = (unsigned char *) wavData;
+ return 8 + ((buf[7] << 24) | (buf[6] << 16) | (buf[5] << 8) | buf[4]);
+}
+
+
+static size_t
+getFrqFileSize(
+  void * frqData)
+{
+ unsigned char * buf = (unsigned char *) frqData;
+ return 40 + 8 * 2 * ((buf[39] << 24) | (buf[38] << 16) | (buf[37] << 8) | buf[36]);
+}
+
+
 class FileFinder
 {
 private:
@@ -1026,14 +1081,14 @@ private:
 
 
 
-typedef std::map<std::string, std::string > MapStr;
-typedef std::shared_ptr< MapStr > SpMapStr;
+typedef std::map< Str, SpStr > MapSpStr;
+typedef std::shared_ptr< MapSpStr > SpMapSpStr;
 
 class BatExecInfo
 {
 protected:
  SpVecSpStr m_batArgs;
- SpMapStr m_envVars;
+ SpMapSpStr m_envVars;
  SpStr m_originalLine;
  SpStr m_expandedLine;
  SpVecSpStr m_parsed;
@@ -1041,15 +1096,15 @@ protected:
 public:
  BatExecInfo(
    SpVecSpStr batArgs,
-   SpMapStr envVars,
+   SpMapSpStr envVars,
    SpStr originalLine,
    SpStr expandedLine);
 
- SpVecSpStr getBatArgs() const { return m_batArgs; }
- SpMapStr getEnvVars() const { return m_envVars; }
- SpStr getOriginalLine() const { return m_originalLine; }
- SpStr getExpandedLine() const { return m_expandedLine; }
- SpVecSpStr getParsed() const { return  m_parsed; }
+ SpVecSpStr getBatArgs() { return m_batArgs; }
+ SpMapSpStr getEnvVars() { return m_envVars; }
+ SpStr getOriginalLine() { return m_originalLine; }
+ SpStr getExpandedLine() { return m_expandedLine; }
+ SpVecSpStr getParsed() { return  m_parsed; }
 
  bool execute(int & exitCode);
 
@@ -1061,7 +1116,7 @@ public:
 
 BatExecInfo::BatExecInfo(
   SpVecSpStr batArgs,
-  SpMapStr envVars,
+  SpMapSpStr envVars,
   SpStr originalLine,
   SpStr expandedLine)
   :
@@ -1081,8 +1136,8 @@ BatExecInfo::execute(
  DWORD status;
 
  for(auto elm : *m_envVars) {
-  if (0 < elm.second.size()) {
-   ::SetEnvironmentVariable(elm.first.c_str(), elm.second.c_str());
+  if (elm.second && 0 < elm.second->size()) {
+   ::SetEnvironmentVariable(elm.first.c_str(), elm.second->c_str());
   } else {
    ::SetEnvironmentVariable(elm.first.c_str(), NULL);
   }
@@ -1154,14 +1209,18 @@ public:
  void addMessage(std::string const & msg);
 
  bool hasResampler() const { return (bool) m_resampler; }
- SpBatExecInfo getResampler() const { return m_resampler; }
+ SpBatExecInfo getResampler() { return m_resampler; }
 
  bool hasWavtool() const { return (bool) m_wavtool; }
- SpBatExecInfo getWavtool() const { m_wavtool; }
+ SpBatExecInfo getWavtool() { m_wavtool; }
 
  bool setExecInfo(SpBatExecInfo execInfo);
 
  bool execute();
+
+ std::string const & getInputFileName();
+ void setInputFileName(std::string const &);
+ void clearLoadModule();
 };
 
 
@@ -1222,6 +1281,58 @@ BatToolSet::execute()
 }
 
 
+std::string const &
+BatToolSet::getInputFileName()
+{
+ if (hasResampler()) {
+  return *((*(getResampler()->getParsed()))[1]);
+
+ } else if (hasWavtool()) {
+  std::string const & helper = *(*(getWavtool()->getEnvVars()))["helper"];
+  std::string const & batName = *((*(getWavtool()->getBatArgs()))[0]);
+  if (batName.find(helper) != std::string::npos) {
+   return *((*(getWavtool()->getParsed()))[2]);
+  }
+ }
+
+ static std::string dmy("");
+ return dmy;
+}
+
+
+void
+BatToolSet::setInputFileName(std::string const & fileName)
+{
+ SpStr spFileName(new std::string(fileName));
+
+ if (hasResampler()) {
+  (*(getResampler()->getParsed()))[1] = spFileName;
+
+ } else if (hasWavtool()) {
+  std::string const & helper = *(*(getWavtool()->getEnvVars()))["helper"];
+  std::string const & batName = *((*(getWavtool()->getBatArgs()))[0]);
+  if (batName.find(helper) != std::string::npos) {
+   (*(getWavtool()->getParsed()))[2] = spFileName;
+  }
+ }
+}
+
+
+void
+BatToolSet::clearLoadModule()
+{
+ SpStr emptyStr(new Str(""));
+
+ if (hasWavtool()) {
+  (*(getWavtool()->getEnvVars()))["loadmodule"] = emptyStr;
+ }
+
+ if (hasResampler()) {
+  (*(getResampler()->getEnvVars()))["loadmodule"] = emptyStr;
+ }
+}
+
+
 
 
 typedef std::shared_ptr< BatToolSet > SpBatToolSet;
@@ -1231,14 +1342,14 @@ typedef std::shared_ptr< VecSpBatToolSet > SpVecSpBatToolSet;
 class BatExecList
 {
 private:
- SpMapStr m_envVars;
+ SpMapSpStr m_envVars;
  SpVecSpBatToolSet m_toolSets;
 
 public:
  BatExecList();
 
  void setEnvVar(std::string const & name, std::string const & value);
- std::string const & getEnvVar(std::string const & name) const { return (*m_envVars)[name]; } 
+ std::string const & getEnvVar(std::string const & name) const { return *(*m_envVars)[name]; } 
  void addMessage(std::string const & msg);
 
  void addExecInfo(
@@ -1247,12 +1358,15 @@ public:
   SpStr expandedLine);
 
  bool execute();
+
+ SpVecSpBatToolSet getToolSets() { return m_toolSets; }
+
 };
 
 
 BatExecList::BatExecList()
   :
-  m_envVars(new MapStr()),
+  m_envVars(new MapSpStr()),
   m_toolSets(new VecSpBatToolSet())
 {
  SpBatToolSet toolSetSp(new BatToolSet());
@@ -1263,8 +1377,9 @@ BatExecList::BatExecList()
 void
 BatExecList::setEnvVar(std::string const & varName, std::string const & varVal)
 {
- SpMapStr envVars(new MapStr(*m_envVars));
- (*envVars)[varName.c_str()] = varVal.c_str();
+ SpMapSpStr envVars(new MapSpStr(*m_envVars));
+ SpStr spVarVal(new std::string(varVal));
+ (*envVars)[varName.c_str()] = spVarVal;
  m_envVars = envVars;
 }
 
@@ -1303,19 +1418,43 @@ BatExecList::execute()
  std::cout << "tempDir=" << tempDir << std::endl;
 
  std::shared_ptr< VoicebankModule > vbmod;
- if (m_envVars->find("loadmodule") != m_envVars->end() && (*m_envVars)["loadmodule"].size() != 0) {
-  std::shared_ptr< VoicebankModule > newVbMod(new VoicebankModule((*m_envVars)["loadmodule"]));
+ if (m_envVars->find("loadmodule") != m_envVars->end() && (*m_envVars)["loadmodule"]->size() != 0) {
+  std::shared_ptr< VoicebankModule > newVbMod(new VoicebankModule(*(*m_envVars)["loadmodule"]));
   vbmod = newVbMod;
  }
 
  for (SpBatToolSet toolSet : *m_toolSets) {
 
   if (vbmod) {
-   std::string dirBackup(getCurDir());
-   setCurDir(vbmod->dirPath());
-   vbmod->load();
-   vbmod->unload();
-   setCurDir(dirBackup);
+   std::string inWavPath = toolSet->getInputFileName();
+   if (0 < inWavPath.size()) {
+
+    std::string noteName = getBaseName(inWavPath);
+    std::string dirBackup(getCurDir());
+    setCurDir(vbmod->dirPath());
+    vbmod->load();
+    void * pcm = vbmod->getPcmData(noteName.c_str(), 0);
+    if (pcm) {
+     std::string newWavPath = tempDir + noteName + ".wav";
+     size_t wavSize = getWavFileSize(pcm);
+     writeBinFile(newWavPath.c_str(), pcm, wavSize);
+     vbmod->freePcm(pcm);
+
+     void * frq = vbmod->getFrqData(noteName.c_str(), 0);
+     if (frq) {
+      std::string newFrqPath = tempDir + noteName + "_wav.frq";
+      size_t frqSize = getFrqFileSize(frq);
+      writeBinFile(newFrqPath.c_str(), frq, frqSize);
+      vbmod->freeFrq(frq);
+     }
+
+     toolSet->setInputFileName(newWavPath);
+    }
+    vbmod->unload();
+    setCurDir(dirBackup);
+
+    toolSet->clearLoadModule();
+   }
   }
 
   if (! toolSet->execute()) {
