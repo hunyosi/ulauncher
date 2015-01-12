@@ -175,6 +175,19 @@ getExtName(
 
 
 static std::string
+eraseLastPathSep(
+  std::string const & path)
+{
+ std::string erased(path);
+ int c = erased[erased.size() - 1];
+ if (c == '\\' || c == '/') {
+  erased.erase(erased.size() - 1);
+ }
+
+ return erased;
+}
+
+static std::string
 toFullPathName(
   std::string const & path)
 {
@@ -232,7 +245,31 @@ existsFile(char const * path)
   return false;
  }
 
- return ((attrs & FILE_ATTRIBUTE_DEVICE) == 0);
+ return ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0);
+}
+
+
+static bool
+existsDir(char const * path)
+{
+ DWORD attrs = ::GetFileAttributes(path);
+ if (attrs == (DWORD)-1) {
+  return false;
+ }
+
+ return ((attrs & FILE_ATTRIBUTE_DIRECTORY) != 0);
+}
+
+
+static int
+existsFileOrDir(char const * path)
+{
+ DWORD attrs = ::GetFileAttributes(path);
+ if (attrs == (DWORD)-1) {
+  return false;
+ }
+
+ return ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0 ? 1 : -1);
 }
 
 
@@ -1071,12 +1108,64 @@ public:
   }
  }
 
- WIN32_FIND_DATA getInfo() const { return m_wfd; }
+ WIN32_FIND_DATA const & getInfo() const { return m_wfd; }
 
 private:
  FileFinder(FileFinder const &);
  FileFinder & operator=(FileFinder const &);
 };
+
+
+
+static bool
+deleteRecursive(
+  std::string const & path)
+{
+ std::string delPtn(eraseLastPathSep(path));
+ std::string dirPath(getDirName(delPtn));
+
+ VecSpStr files;
+ VecSpStr dirs;
+ FileFinder ff(delPtn);
+ while (ff.next()) {
+  SpStr name(new std::string(ff.getInfo().cFileName));
+  if (*name != "." && *name != "..") {
+   if (ff.getInfo().dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+    dirs.push_back(name);
+   } else {
+    files.push_back(name);
+   }
+  }
+ }
+
+ ff.close();
+
+ bool success = true;
+
+ for (SpStr name : files) {
+  std::string targetPath(dirPath);
+  targetPath.append(*name);
+  if (! ::DeleteFile(targetPath.c_str())) {
+   success = false;
+  }
+ }
+
+ for (SpStr name : dirs) {
+  std::string targetPath(dirPath);
+  targetPath.append(*name);
+  std::string dirPtn(targetPath);
+  dirPtn.append("\\*");
+  if (deleteRecursive(dirPtn.c_str())) {
+   if (! ::RemoveDirectory(targetPath.c_str())) {
+    success = false;
+   }
+  } else {
+   success = false;
+  }
+ }
+
+ return success;
+}
 
 
 
@@ -1212,7 +1301,7 @@ public:
  SpBatExecInfo getResampler() { return m_resampler; }
 
  bool hasWavtool() const { return (bool) m_wavtool; }
- SpBatExecInfo getWavtool() { m_wavtool; }
+ SpBatExecInfo getWavtool() { return m_wavtool; }
 
  bool setExecInfo(SpBatExecInfo execInfo);
 
@@ -1288,9 +1377,9 @@ BatToolSet::getInputFileName()
   return *((*(getResampler()->getParsed()))[1]);
 
  } else if (hasWavtool()) {
-  std::string const & helper = *(*(getWavtool()->getEnvVars()))["helper"];
-  std::string const & batName = *((*(getWavtool()->getBatArgs()))[0]);
-  if (batName.find(helper) != std::string::npos) {
+  std::string helper = getFileName(*(*(getWavtool()->getEnvVars()))["helper"]);
+  std::string batName = getFileName(*((*(getWavtool()->getBatArgs()))[0]));
+  if (batName != helper) {
    return *((*(getWavtool()->getParsed()))[2]);
   }
  }
@@ -1309,9 +1398,9 @@ BatToolSet::setInputFileName(std::string const & fileName)
   (*(getResampler()->getParsed()))[1] = spFileName;
 
  } else if (hasWavtool()) {
-  std::string const & helper = *(*(getWavtool()->getEnvVars()))["helper"];
-  std::string const & batName = *((*(getWavtool()->getBatArgs()))[0]);
-  if (batName.find(helper) != std::string::npos) {
+  std::string helper = getFileName(*(*(getWavtool()->getEnvVars()))["helper"]);
+  std::string batName = getFileName(*((*(getWavtool()->getBatArgs()))[0]));
+  if (batName != helper) {
    (*(getWavtool()->getParsed()))[2] = spFileName;
   }
  }
@@ -1353,9 +1442,9 @@ public:
  void addMessage(std::string const & msg);
 
  void addExecInfo(
-  SpVecSpStr batArgs,
-  SpStr originalLine,
-  SpStr expandedLine);
+   SpVecSpStr batArgs,
+   SpStr originalLine,
+   SpStr expandedLine);
 
  bool execute();
 
@@ -1416,6 +1505,9 @@ BatExecList::execute()
 {
  std::string tempDir = makeTempDir();
  std::cout << "tempDir=" << tempDir << std::endl;
+ if (tempDir.size() < 1) {
+  return false;
+ }
 
  std::shared_ptr< VoicebankModule > vbmod;
  if (m_envVars->find("loadmodule") != m_envVars->end() && (*m_envVars)["loadmodule"]->size() != 0) {
@@ -1428,6 +1520,13 @@ BatExecList::execute()
   if (vbmod) {
    std::string inWavPath = toolSet->getInputFileName();
    if (0 < inWavPath.size()) {
+    std::string tempVbDir = tempDir + getFileName(eraseLastPathSep(getDirName(inWavPath)));
+    if (! existsDir(tempVbDir.c_str())) {
+     if (! ::CreateDirectory(tempVbDir.c_str(), NULL)) {
+      return false;
+     }
+    }
+    tempVbDir.append("\\");
 
     std::string noteName = getBaseName(inWavPath);
     std::string dirBackup(getCurDir());
@@ -1435,14 +1534,14 @@ BatExecList::execute()
     vbmod->load();
     void * pcm = vbmod->getPcmData(noteName.c_str(), 0);
     if (pcm) {
-     std::string newWavPath = tempDir + noteName + ".wav";
+     std::string newWavPath = tempVbDir + noteName + ".wav";
      size_t wavSize = getWavFileSize(pcm);
      writeBinFile(newWavPath.c_str(), pcm, wavSize);
      vbmod->freePcm(pcm);
 
      void * frq = vbmod->getFrqData(noteName.c_str(), 0);
      if (frq) {
-      std::string newFrqPath = tempDir + noteName + "_wav.frq";
+      std::string newFrqPath = tempVbDir + noteName + "_wav.frq";
       size_t frqSize = getFrqFileSize(frq);
       writeBinFile(newFrqPath.c_str(), frq, frqSize);
       vbmod->freeFrq(frq);
@@ -1462,6 +1561,7 @@ BatExecList::execute()
   }
  }
 
+ deleteRecursive(tempDir);
  return true;
 }
 
