@@ -14,6 +14,72 @@
 
 
 
+typedef std::wstring WStr;
+typedef std::shared_ptr< WStr > SpWStr;
+typedef std::vector< SpWStr > VecSpWStr;
+typedef std::shared_ptr< VecSpWStr > SpVecSpWStr;
+
+
+typedef std::string Str;
+typedef std::shared_ptr< Str > SpStr;
+typedef std::vector< SpStr > VecSpStr;
+typedef std::shared_ptr< VecSpStr > SpVecSpStr;
+
+
+class ConvStrToWStrError : public std::runtime_error
+{
+public:
+ explicit ConvStrToWStrError() :
+   std::runtime_error("ConvStrToWStrError") {}
+};
+
+static SpWStr
+convStrToWStr(
+  char const * s)
+{
+ int bufSize = ::MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+ if (bufSize == 0) {
+  throw ConvStrToWStrError();
+ }
+
+ std::vector< wchar_t > buf(bufSize);
+ if (! ::MultiByteToWideChar(CP_ACP, 0, s, -1, &buf[0], bufSize)) {
+  throw ConvStrToWStrError();
+ }
+
+ SpWStr str(new WStr(&buf[0]));
+ return str;
+}
+
+
+class ConvWStrToStrError : public std::runtime_error
+{
+public:
+ explicit ConvWStrToStrError() :
+   std::runtime_error("ConvWStrToStrError") {}
+};
+
+static SpStr
+convWStrToStr(
+  wchar_t const * ws)
+{
+ int bufSize = ::WideCharToMultiByte(CP_ACP, 0, ws, -1, NULL, 0, NULL, NULL);
+ if (bufSize == 0) {
+  throw ConvWStrToStrError();
+ }
+
+ std::vector< char > buf(bufSize);
+ if (! ::WideCharToMultiByte(CP_ACP, 0, ws, -1, &buf[0], bufSize, NULL, NULL)) {
+  throw ConvWStrToStrError();
+ }
+
+ SpStr str(new Str(&buf[0]));
+ return str;
+}
+
+
+
+
 static void
 rtrim(
   std::string& str,
@@ -69,8 +135,8 @@ toUpperCase(
 {
  for (size_t i = 0, z = str.size(); i < z; ++ i) {
   char c = str[i];
-  if (L'a' <= c && c <= L'z') {
-   str[i] = L'A' + (c - L'a');
+  if ('a' <= c && c <= 'z') {
+   str[i] = 'A' + (c - 'a');
   }
  }
 }
@@ -84,13 +150,13 @@ cmdLineEncoding(
   return "\"\"";
  }
 
- std::string v(cmdLine);
- if (v.find_first_of(" \t\r\n\v\f") != std::string::npos) {
-  std::string v2;
+ SpWStr v = convStrToWStr(cmdLine);
+ if (v->find_first_of(L" \t\r\n\v\f") != WStr::npos) {
+  WStr v2;
   v2.append(1, L'\"');
 
-  char prevvc = 0;
-  for (char vc : v) {
+  wchar_t prevvc = 0;
+  for (wchar_t vc : *v) {
    if (vc == L'\"') {
     if (prevvc == L'\\') {
      v2.append(1, L'\\');
@@ -104,9 +170,10 @@ cmdLineEncoding(
 
   v2.append(1, L'\"');
 
-  return v2;
+  SpStr v3 = convWStrToStr(v2.c_str());
+  return *v3;
  } else {
-  return v;
+  return cmdLine;
  }
 }
 
@@ -115,15 +182,17 @@ static std::string
 getDirName(
   std::string const & path)
 {
- std::string::size_type p = path.find_last_of("\\/:");
- if (p == std::string::npos) {
+ SpWStr wPath = convStrToWStr(path.c_str());
+ WStr::size_type p = wPath->find_last_of(L"\\/:");
+ if (p == WStr::npos) {
   p = 0;
  } else {
   ++ p;
  }
 
- std::string dirName(path, 0, p);
- return dirName;
+ WStr wDirName(*wPath, 0, p);
+ SpStr dirName = convWStrToStr(wDirName.c_str());
+ return *dirName;
 }
 
 
@@ -131,15 +200,17 @@ static std::string
 getFileName(
   std::string const & path)
 {
- std::string::size_type p = path.find_last_of("\\/:");
- if (p == std::string::npos) {
+ SpWStr wPath = convStrToWStr(path.c_str());
+ WStr::size_type p = wPath->find_last_of(L"\\/:");
+ if (p == WStr::npos) {
   p = 0;
  } else {
   ++ p;
  }
 
- std::string fileName(path, p, path.size() - p);
- return fileName;
+ WStr wFileName(*wPath, p, wPath->size() - p);
+ SpStr fileName = convWStrToStr(wFileName.c_str());
+ return *fileName;
 }
 
 
@@ -178,13 +249,14 @@ static std::string
 eraseLastPathSep(
   std::string const & path)
 {
- std::string erased(path);
- int c = erased[erased.size() - 1];
- if (c == '\\' || c == '/') {
-  erased.erase(erased.size() - 1);
+ SpWStr wPath = convStrToWStr(path.c_str());
+ wchar_t c = (*wPath)[wPath->size() - 1];
+ if (c == L'\\' || c == L'/') {
+  wPath->erase(wPath->size() - 1);
  }
 
- return erased;
+ SpStr erased = convWStrToStr(wPath->c_str());
+ return *erased;
 }
 
 static std::string
@@ -801,20 +873,6 @@ VoicebankModule::freeFrq(
 
 
 
-typedef std::wstring WStr;
-typedef std::shared_ptr< WStr > SpWStr;
-typedef std::vector< SpWStr > VecSpWStr;
-typedef std::shared_ptr< VecSpWStr > SpVecSpWStr;
-
-
-typedef std::string Str;
-typedef std::shared_ptr< Str > SpStr;
-typedef std::vector< SpStr > VecSpStr;
-typedef std::shared_ptr< VecSpStr > SpVecSpStr;
-
-
-
-
 static SpStr
 expandEnvVar(
   char const * str)
@@ -833,20 +891,20 @@ expandEnvVar(
   SpVecSpStr args)
 {
  std::string argsExpanded;
- if (str[0] != L'\0') {
+ if (str[0] != '\0') {
   char c, nc;
-  for (int i = 0; str[i + 1] != L'\0'; ++ i) {
+  for (int i = 0; str[i + 1] != '\0'; ++ i) {
    c = str[i];
    nc = str[i + 1];
-   if (c == L'%' && L'0' <= nc && nc <= L'9') {
-    argsExpanded.append(cmdLineEncoding((*args)[nc - L'0']->c_str()));
+   if (c == '%' && '0' <= nc && nc <= '9') {
+    argsExpanded.append(cmdLineEncoding((*args)[nc - '0']->c_str()));
     ++ i;
    } else {
     argsExpanded.append(1, c);
    }
   }
 
-  if (nc != L'\0') {
+  if (nc != '\0') {
    argsExpanded.append(1, nc);
   }
  }
@@ -859,54 +917,6 @@ expandEnvVar(
 }
 
 
-class ConvStrToWStrError : public std::runtime_error
-{
-public:
- explicit ConvStrToWStrError() :
-   std::runtime_error("ConvStrToWStrError") {}
-};
-
-static SpWStr
-convStrToWStr(
-  char const * s)
-{
- size_t bufSize = std::mbstowcs(NULL, s, 0);
- if (bufSize == (size_t)-1) {
-  throw ConvStrToWStrError();
- }
-
- bufSize += 1;
- std::vector< wchar_t > buf(bufSize);
- std::mbstowcs(&buf[0], s, bufSize);
-
- SpWStr str(new WStr(&buf[0]));
- return str;
-}
-
-
-class ConvWStrToStrError : public std::runtime_error
-{
-public:
- explicit ConvWStrToStrError() :
-   std::runtime_error("ConvWStrToStrError") {}
-};
-
-static SpStr
-convWStrToStr(
-  wchar_t const * ws)
-{
- size_t bufSize = std::wcstombs(NULL, ws, 0);
- if (bufSize == (size_t)-1) {
-  throw ConvWStrToStrError();
- }
-
- bufSize += 1;
- std::vector< char > buf(bufSize);
- std::wcstombs(&buf[0], ws, bufSize);
-
- SpStr str(new Str(&buf[0]));
- return str;
-}
 
 
 class ParseCommandLineError : public std::runtime_error
