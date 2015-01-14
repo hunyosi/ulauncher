@@ -129,6 +129,26 @@ expandEnvVar(
 
 
 static std::string
+getEnvVarVal(
+  char const * envVarName)
+{
+ char dmyBuf[1];
+ DWORD bufSize = ::GetEnvironmentVariable(envVarName, dmyBuf, 0);
+ if (bufSize < 1) {
+  return "";
+ }
+
+ std::vector< char > buf(bufSize);
+ bufSize = ::GetEnvironmentVariable(envVarName, &buf[0], bufSize);
+ if (bufSize < 1) {
+  return "";
+ }
+
+ return &buf[0];
+}
+
+
+static std::string
 getModFileName(
   HINSTANCE modHandle)
 {
@@ -197,21 +217,28 @@ getUtauPath(
  std::string baseDir(exeDirPath);
  std::string iniFile(baseDir + "ulauncher.ini");
 
- if (existsFile(iniFile.c_str())) {
-  SpMapStr cfg = readIniFile(iniFile.c_str());
-  return (*cfg)["utauExePath"];
+ std::string utauPath(getEnvVarVal("UTAU_PATH"));
+ if (0 < utauPath.size()) {
+  return utauPath;
  }
 
- std::string utauExePath(baseDir + "utau.exe");
  if (existsFile(iniFile.c_str())) {
-  return utauExePath;
+  SpMapStr cfg = readIniFile(iniFile.c_str());
+  if (0 < (*cfg)["utauExePath"].size()) {
+   return (*cfg)["utauExePath"];
+  }
+ }
+
+ std::string utauExePath1(baseDir + "utau.exe");
+ if (existsFile(utauExePath1.c_str())) {
+  return utauExePath1;
  }
 
  PTSTR utauExePath2 = expandEnvVar("%ProgramFiles%\\UTAU\\utau.exe");
  std::string utauExePath2b(utauExePath2);
  delete[] utauExePath2;
  if (existsFile(utauExePath2b.c_str())) {
-  return utauExePath;
+  return utauExePath2b;
  }
 
  return "";

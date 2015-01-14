@@ -1,4 +1,4 @@
 ulauncher
 =========
 
-UTAU launcher (alternative CMD.EXE)
+UTAU のレンダリングの際に

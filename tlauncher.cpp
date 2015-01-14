@@ -462,6 +462,34 @@ makeTempDir()
 
 
 
+
+static int
+noteNameToNoteNumber(
+  char const * noteName)
+{
+ static int const nameToNum[] = {9, 11, 0, 2, 4, 5, 7};
+ int noteNoBase, numPos, octave;
+
+ noteNoBase = nameToNum[noteName[0] - 'A'];
+ if (noteName[1] == '#') {
+  noteNoBase += 1;
+  numPos = 2;
+ } else {
+  numPos = 1;
+ }
+
+ if (noteName[numPos] == '-') {
+  octave = - (noteName[numPos + 1] - '0');
+ } else {
+  octave = noteName[numPos] - '0';
+ }
+
+ return (octave + 1) * 12 + noteNoBase;
+}
+
+
+
+
 /* ****************************************************
  *  EIN -- Extended INI 
  * ****************************************************/
@@ -1205,6 +1233,8 @@ public:
  SpStr getExpandedLine() { return m_expandedLine; }
  SpVecSpStr getParsed() { return  m_parsed; }
 
+ void exportEnvVars();
+
  bool execute(int & exitCode);
 
 public:
@@ -1228,12 +1258,9 @@ BatExecInfo::BatExecInfo(
 }
 
 
-bool
-BatExecInfo::execute(
-  int & exitCode)
+void
+BatExecInfo::exportEnvVars()
 {
- DWORD status;
-
  for(auto elm : *m_envVars) {
   if (elm.second && 0 < elm.second->size()) {
    ::SetEnvironmentVariable(elm.first.c_str(), elm.second->c_str());
@@ -1241,6 +1268,16 @@ BatExecInfo::execute(
    ::SetEnvironmentVariable(elm.first.c_str(), NULL);
   }
  }
+}
+
+
+bool
+BatExecInfo::execute(
+  int & exitCode)
+{
+ DWORD status;
+
+ exportEnvVars();
 
  std::string line;
  for (SpStr elm : *m_parsed) {
@@ -1303,6 +1340,7 @@ private:
 public:
  BatToolSet();
 
+ SpVecSpBatExecInfo getExecInfos() { return m_execInfos; }
  bool isEmpty() { return m_execInfos->size() == 0; }
 
  void addMessage(std::string const & msg);
@@ -1319,6 +1357,9 @@ public:
 
  std::string const & getInputFileName();
  void setInputFileName(std::string const &);
+
+ std::string const & getNoteName();
+
  void clearLoadModule();
 };
 
@@ -1414,6 +1455,18 @@ BatToolSet::setInputFileName(std::string const & fileName)
    (*(getWavtool()->getParsed()))[2] = spFileName;
   }
  }
+}
+
+
+std::string const &
+BatToolSet::getNoteName()
+{
+ if (hasResampler()) {
+  return *((*(getResampler()->getParsed()))[3]);
+ }
+
+ static std::string dmy("");
+ return dmy;
 }
 
 
@@ -1527,6 +1580,10 @@ BatExecList::execute()
 
  for (SpBatToolSet toolSet : *m_toolSets) {
 
+  if (toolSet->isEmpty()) {
+   break;
+  }
+
   if (vbmod) {
    std::string inWavPath = toolSet->getInputFileName();
    if (0 < inWavPath.size()) {
@@ -1538,20 +1595,28 @@ BatExecList::execute()
     }
     tempVbDir.append("\\");
 
-    std::string noteName = getBaseName(inWavPath);
+    std::string voiceName = getBaseName(inWavPath);
+    std::string noteName = toolSet->getNoteName();
+    int noteNumber = 0;
+    if (0 < noteName.size()) {
+     noteNumber = noteNameToNoteNumber(noteName.c_str());
+    }
+
+    (*toolSet->getExecInfos())[0]->exportEnvVars();
+
     std::string dirBackup(getCurDir());
     setCurDir(vbmod->dirPath());
     vbmod->load();
-    void * pcm = vbmod->getPcmData(noteName.c_str(), 0);
+    void * pcm = vbmod->getPcmData(voiceName.c_str(), noteNumber);
     if (pcm) {
-     std::string newWavPath = tempVbDir + noteName + ".wav";
+     std::string newWavPath = tempVbDir + voiceName + ".wav";
      size_t wavSize = getWavFileSize(pcm);
      writeBinFile(newWavPath.c_str(), pcm, wavSize);
      vbmod->freePcm(pcm);
 
-     void * frq = vbmod->getFrqData(noteName.c_str(), 0);
+     void * frq = vbmod->getFrqData(voiceName.c_str(), noteNumber);
      if (frq) {
-      std::string newFrqPath = tempVbDir + noteName + "_wav.frq";
+      std::string newFrqPath = tempVbDir + voiceName + "_wav.frq";
       size_t frqSize = getFrqFileSize(frq);
       writeBinFile(newFrqPath.c_str(), frq, frqSize);
       vbmod->freeFrq(frq);
@@ -1849,9 +1914,11 @@ BatEnv::evalLine(
  if (tc == '@') {
   expanded->erase(0, 1);
   ltrim(*expanded);
- }  //else {
-  std::cout << "> " << *expanded << std::endl;
- //}
+ }
+
+#ifdef DEBUG
+ std::cout << "> " << *expanded << std::endl;
+#endif
 
  return evalLineBody(*expanded, line, execList);
 }
@@ -1869,7 +1936,9 @@ BatEnv::callBat(
   m_args = args;
   m_batPath = (*args)[0];
 
+#ifdef DEBUG
   std::cout << "enter: " << *m_batPath << std::endl;
+#endif
 
   SpVecSpStr lines(new VecSpStr());
 
@@ -1910,7 +1979,9 @@ BatEnv::callBat(
   retVal = -1;
  }
 
+#ifdef DEBUG
  std::cout << "leave: " << *m_batPath << std::endl;
+#endif
 
  return retVal;
 }
@@ -1993,9 +2064,11 @@ main()
 
   exitCode = mainImpl(args);
 
+#ifdef DEBUG
   std::stringstream ss;
   ss << "exitCode=" << exitCode;
   ::MessageBox(NULL, ss.str().c_str(), "tlauncher", MB_OK);
+#endif
 
  } catch (std::exception e) {
   std::cout << e.what() << std::endl;
