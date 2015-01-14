@@ -1,3 +1,4 @@
+RELEASEDIR=../ulauncher-`date +'%Y%m%d'`000
 
 all: ulauncher.exe tlauncher.exe
 
@@ -21,4 +22,12 @@ tlauncher_d.exe: tlauncher.cpp
 
 clean:
 	rm -f *.exe
+
+
+release: all
+	mkdir $(RELEASEDIR)
+	cp -f LICENSE $(RELEASEDIR)
+	cp -f README.md $(RELEASEDIR)
+	cp -f *.exe $(RELEASEDIR)
+	cp -f *.ini $(RELEASEDIR)
 
