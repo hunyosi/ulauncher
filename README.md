@@ -16,7 +16,7 @@ ulauncher
 インストール
 ------------
 
-ulauncher-<version>.zipを適当なフォルダに展開してください。
+ulauncher-vX.Y.Z.zipを適当なフォルダに展開してください。
 
 その後、中のulauncher.iniを開いて「utauExePath=」の後ろに
 utau.exeへのフルパス（例えば「C:\Program Files\UTAU\utau.exe」など）
