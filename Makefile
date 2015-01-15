@@ -1,4 +1,5 @@
-RELEASEDIR=../ulauncher-`date +'%Y%m%d'`000
+VERSION=v0.0.1
+RELEASEDIR=../ulauncher-$(VERSION)
 
 all: ulauncher.exe tlauncher.exe
 
