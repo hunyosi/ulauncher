@@ -1,4 +1,4 @@
-VERSION=v0.0.1
+VERSION=v0.0.2
 RELEASEDIR=../ulauncher-$(VERSION)
 
 all: ulauncher.exe tlauncher.exe

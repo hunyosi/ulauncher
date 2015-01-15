@@ -1942,10 +1942,10 @@ BatEnv::callBat(
 
   SpVecSpStr lines(new VecSpStr());
 
-  std::vector< char > buf(4096);
+  std::string buf;
   std::ifstream ifs(m_batPath->c_str());
-  while (ifs.good() && ! ifs.getline(&buf[0], buf.size()).eof()) {
-   SpStr line(new Str(&buf[0]));
+  while (ifs.good() && std::getline(ifs, buf)) {
+   SpStr line(new std::string(buf));
    chomp(*line);
    lines->push_back(line);
 
