@@ -11,71 +11,10 @@
 #include <sstream>
 #include <map>
 
+#include "spstr.hpp"
+#include "chrcnv.hpp"
 
 
-
-typedef std::wstring WStr;
-typedef std::shared_ptr< WStr > SpWStr;
-typedef std::vector< SpWStr > VecSpWStr;
-typedef std::shared_ptr< VecSpWStr > SpVecSpWStr;
-
-
-typedef std::string Str;
-typedef std::shared_ptr< Str > SpStr;
-typedef std::vector< SpStr > VecSpStr;
-typedef std::shared_ptr< VecSpStr > SpVecSpStr;
-
-
-class ConvStrToWStrError : public std::runtime_error
-{
-public:
- explicit ConvStrToWStrError() :
-   std::runtime_error("ConvStrToWStrError") {}
-};
-
-static SpWStr
-convStrToWStr(
-  char const * s)
-{
- int bufSize = ::MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
- if (bufSize == 0) {
-  throw ConvStrToWStrError();
- }
-
- std::vector< wchar_t > buf(bufSize);
- if (! ::MultiByteToWideChar(CP_ACP, 0, s, -1, &buf[0], bufSize)) {
-  throw ConvStrToWStrError();
- }
-
- SpWStr str(new WStr(&buf[0]));
- return str;
-}
-
-
-class ConvWStrToStrError : public std::runtime_error
-{
-public:
- explicit ConvWStrToStrError() :
-   std::runtime_error("ConvWStrToStrError") {}
-};
-
-static SpStr
-convWStrToStr(
-  wchar_t const * ws)
-{
- int bufSize = ::WideCharToMultiByte(CP_ACP, 0, ws, -1, NULL, 0, NULL, NULL);
- if (bufSize == 0) {
-  throw ConvWStrToStrError();
- }
-
- std::vector< char > buf(bufSize);
- if (! ::WideCharToMultiByte(CP_ACP, 0, ws, -1, &buf[0], bufSize, NULL, NULL)) {
-  throw ConvWStrToStrError();
- }
-
- SpStr str(new Str(&buf[0]));
- return str;
-}
 
 
 
