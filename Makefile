@@ -12,7 +12,10 @@ CXXFLAGS=-std=c++11 $(DEBUGFLAG)
 
 TLOBJS=\
  tlauncher.o \
- chrcnv.o
+ chrcnv.o \
+ strutil.o \
+ randutil.o \
+ fsutil.o
 
 
 all: ulauncher.exe tlauncher.exe
