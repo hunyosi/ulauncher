@@ -2,6 +2,7 @@
 #define SPSTR_HPP__HUNYOSI
 
 #include <string>
+#include <vector>
 #include <memory>
 
 

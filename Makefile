@@ -15,7 +15,10 @@ TLOBJS=\
  chrcnv.o \
  strutil.o \
  randutil.o \
- fsutil.o
+ fsutil.o \
+ vbmod.o \
+ cmdlutil.o \
+ envutil.o
 
 
 all: ulauncher.exe tlauncher.exe
