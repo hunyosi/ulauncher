@@ -18,7 +18,8 @@ TLOBJS=\
  fsutil.o \
  vbmod.o \
  cmdlutil.o \
- envutil.o
+ envutil.o \
+ inifile.o
 
 
 all: ulauncher.exe tlauncher.exe
