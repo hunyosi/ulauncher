@@ -2,7 +2,7 @@
 #include <vector>
 #include <windows.h>
 
-#include "vbmod.hpp"
+#include "VoicebankModule.hpp"
 
 
 

@@ -1,5 +1,5 @@
-#ifndef VBMOD_HPP__HUNYOSI
-#define VBMOD_HPP__HUNYOSI
+#ifndef VOICEBANKMODULE_HPP__HUNYOSI
+#define VOICEBANKMODULE_HPP__HUNYOSI
 
 
 #include <string>
@@ -69,4 +69,4 @@ private:
 };
 
 
-#endif /* VBMOD_HPP__HUNYOSI */
+#endif /* VOICEBANKMODULE_HPP__HUNYOSI */

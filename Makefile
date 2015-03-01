@@ -16,10 +16,15 @@ TLOBJS=\
  strutil.o \
  randutil.o \
  fsutil.o \
- vbmod.o \
  cmdlutil.o \
  envutil.o \
- inifile.o
+ inifile.o \
+ miscutil.o \
+ VoicebankModule.o \
+ BatExecInfo.o \
+ BatToolSet.o \
+ BatExecList.o \
+ BatEnv.o
 
 
 all: ulauncher.exe tlauncher.exe
