@@ -7,145 +7,10 @@
 #include <sstream>
 #include <fstream>
 
-
-
-
-static void
-rtrim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- std::string::size_type p = str.find_last_not_of(trimChrs);
- if (p == std::string::npos) {
-  str.erase(0);
-  return;
- }
-
- ++ p;
- str.erase(p);
-}
-
-
-static void
-ltrim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- std::string::size_type p = str.find_first_not_of(trimChrs);
- str.erase(0, p);
-}
-
-
-static void
-trim(
-  std::string& str,
-  const std::string& trimChrs = " \t\n\r\v\f")
-{
- rtrim(str, trimChrs);
- ltrim(str, trimChrs);
-}
-
-
-
-
-typedef std::map<std::string, std::string> MapStr;
-typedef std::shared_ptr< MapStr > SpMapStr;
-
-static SpMapStr
-readIniFile(
-  char const * path)
-{
- SpMapStr p;
- SpMapStr mp( new MapStr() );
-
- std::vector< char > buf(4096);
- std::ifstream ifs(path);
- while (ifs.good() && ! ifs.getline(&buf[0], buf.size()).eof()) {
-  std::string line(&buf[0]);
-  std::string::size_type p = line.find('=');
-  if (p == std::string::npos) {
-   continue;
-  }
-
-  std::string key(line, 0, p);
-  std::string val(line, p + 1, line.size() - (p + 1));
-  trim(key);
-  trim(val);
-  (*mp)[key] = val;
- }
-
- if (ifs.bad()) {
-  return p;
- }
-
- return mp;
-}
-
-
-static bool
-writeIniFile(
-  char const * path,
-  SpMapStr mp)
-{
- std::ofstream ofs(path);
- if (ofs.bad()) {
-  return false;
- }
-
- for (auto pair : *mp) {
-  ofs << pair.first << '=' << pair.second << std::endl;
-  if (ofs.bad()) {
-   return false;
-  }
- }
-
- return true;
-}
-
-
-static bool
-existsFile(char const * path)
-{
- DWORD attrs = ::GetFileAttributes(path);
- if (attrs == (DWORD)-1) {
-  return false;
- }
-
- return ((attrs & FILE_ATTRIBUTE_DEVICE) == 0);
-}
-
-
-
-
-static PTSTR
-expandEnvVar(
-  const char* str)
-{
- DWORD bufSize = ::ExpandEnvironmentStrings(str, NULL, 0);
- PTSTR buf = new TCHAR[bufSize];
- ::ExpandEnvironmentStrings(str, buf, bufSize);
- return buf;
-}
-
-
-static std::string
-getEnvVarVal(
-  char const * envVarName)
-{
- char dmyBuf[1];
- DWORD bufSize = ::GetEnvironmentVariable(envVarName, dmyBuf, 0);
- if (bufSize < 1) {
-  return "";
- }
-
- std::vector< char > buf(bufSize);
- bufSize = ::GetEnvironmentVariable(envVarName, &buf[0], bufSize);
- if (bufSize < 1) {
-  return "";
- }
-
- return &buf[0];
-}
+#include "strutil.hpp"
+#include "fsutil.hpp"
+#include "envutil.hpp"
+#include "inifile.hpp"
 
 
 static std::string
@@ -175,42 +40,6 @@ getModFileName(
 
 
 static std::string
-toFullPathName(
-  std::string const & path)
-{
- TCHAR *p;
- std::vector< TCHAR > buf(MAX_PATH);
- DWORD s;
- s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
- if (buf.size() - 1 < s) {
-  buf.resize(s, 0);
-  s = ::GetFullPathName(path.c_str(), buf.size(), &buf[0], &p);
- }
-
- if (s < 1) {
-  buf[0] = 0;
- }
-
- std::string str(&buf[0]);
- return str;
-}
-
-
-static std::string
-getDirName(
-  std::string const & path)
-{
- std::string::size_type p = path.find_last_of("\\/");
- if (p == std::string::npos) {
-  p = 0;
- }
-
- std::string dirName(path, 0, p + 1);
- return dirName;
-}
-
-
-static std::string
 getUtauPath(
   char const * exeDirPath)
 {
@@ -223,7 +52,7 @@ getUtauPath(
  }
 
  if (existsFile(iniFile.c_str())) {
-  SpMapStr cfg = readIniFile(iniFile.c_str());
+  SpMapStr cfg = readIniFileSimple(iniFile.c_str());
   if (0 < (*cfg)["utauExePath"].size()) {
    return (*cfg)["utauExePath"];
   }
@@ -234,11 +63,9 @@ getUtauPath(
   return utauExePath1;
  }
 
- PTSTR utauExePath2 = expandEnvVar("%ProgramFiles%\\UTAU\\utau.exe");
- std::string utauExePath2b(utauExePath2);
- delete[] utauExePath2;
- if (existsFile(utauExePath2b.c_str())) {
-  return utauExePath2b;
+ SpStr utauExePath2 = expandEnvVar("%ProgramFiles%\\UTAU\\utau.exe");
+ if (existsFile(utauExePath2->c_str())) {
+  return *utauExePath2;
  }
 
  return "";

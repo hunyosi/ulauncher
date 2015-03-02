@@ -10,6 +10,17 @@ CXX=g++
 CXXFLAGS=-std=c++11 $(DEBUGFLAG)
 
 
+ULOBJS=\
+ ulauncher.o \
+ chrcnv.o \
+ strutil.o \
+ randutil.o \
+ fsutil.o \
+ cmdlutil.o \
+ envutil.o \
+ inifile.o
+
+
 TLOBJS=\
  tlauncher.o \
  chrcnv.o \
@@ -29,8 +40,8 @@ TLOBJS=\
 
 all: ulauncher.exe tlauncher.exe
 
-ulauncher.exe: ulauncher.cpp
-	g++ -std=c++11 -o ulauncher.exe ulauncher.cpp -mwindows
+ulauncher.exe: $(ULOBJS)
+	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $(ULOBJS) $(LDLIBS) -mwindows
 
 tlauncher.exe: $(TLOBJS)
 	$(CXX) $(LDFLAGS) $(TARGET_ARCH) -o $@ $(TLOBJS) $(LDLIBS)

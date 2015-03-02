@@ -52,3 +52,23 @@ expandEnvVar(
 }
 
 
+std::string
+getEnvVarVal(
+  char const * envVarName)
+{
+ char dmyBuf[1];
+ DWORD bufSize = ::GetEnvironmentVariable(envVarName, dmyBuf, 0);
+ if (bufSize < 1) {
+  return "";
+ }
+
+ std::vector< char > buf(bufSize);
+ bufSize = ::GetEnvironmentVariable(envVarName, &buf[0], bufSize);
+ if (bufSize < 1) {
+  return "";
+ }
+
+ return &buf[0];
+}
+
+

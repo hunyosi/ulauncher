@@ -16,4 +16,17 @@ readIniFile(
   char const * path);
 
 
+typedef std::map<std::string, std::string> MapStr;
+typedef std::shared_ptr< MapStr > SpMapStr;
+
+SpMapStr
+readIniFileSimple(
+  char const * path);
+
+bool
+writeIniFile(
+  char const * path,
+  SpMapStr mp);
+
+
 #endif /* INIFILE_HPP__HUNYOSI */
